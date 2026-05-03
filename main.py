@@ -17,6 +17,7 @@ def load_db():
         "groups": {},
         "pending": {},
         "stats": {"approved": 0, "rejected": 0},
+        "states": {}, # هنا بنحفظ حالة المستخدم
         "verify_msg": "مرحباً {name} 👋\n\nاضغط على الزر عشان نتحقق انك لست روبوت ونقبلك في {group} ✅",
         "verify_msg_entities": [],
         "success_msg": "✅ **تم التحقق بنجاح**\n\nتم قبولك في {group}\nتقدر تدخل دلوقتي 🎉\n\n💎 بوت مجاني من @Devazf",
@@ -31,8 +32,19 @@ def save_db():
 DB = load_db()
 bot = None
 
+def set_state(user_id, state):
+    DB["states"][str(user_id)] = state
+    save_db()
+
+def get_state(user_id):
+    return DB["states"].get(str(user_id))
+
+def clear_state(user_id):
+    if str(user_id) in DB["states"]:
+        del DB["states"][str(user_id)]
+        save_db()
+
 def build_button_markup(user_id, group_id):
-    """بناء زر مع دعم ايموجي بريميوم"""
     button_text = DB["button_text"]
     button_entities = []
     for e in DB.get("button_entities", []):
@@ -63,7 +75,7 @@ async def setup_bot():
                 [Button.url("💬 مراسلة المبرمج", f"https://t.me/{DEV_USERNAME}")]
             ]
             await event.reply(
-                f"🤖 **بوت الموافقة التلقائية V2.5**\n\n"
+                f"🤖 **بوت الموافقة التلقائية V2.6**\n\n"
                 f"👑 **لوحة المطور**\n\n"
                 f"الجروبات المفعلة: {len(DB['groups'])}\n"
                 f"تم قبول: {DB['stats']['approved']}\n"
@@ -92,6 +104,7 @@ async def setup_bot():
     async def add_group(event):
         if event.sender_id!= DEV_ID:
             return await event.answer("❌ للمطور فقط", alert=True)
+        set_state(event.sender_id, "wait_group_id")
         await event.edit(
             "➕ **اضافة جروب/قناة**\n\n"
             "1. ضيف البوت ادمن في الجروب\n"
@@ -101,7 +114,6 @@ async def setup_bot():
             "او ابعت لينك الجروب",
             buttons=[[Button.inline("🔙", b"back_admin")]]
         )
-        bot.wait_group_id = True
 
     @bot.on(events.CallbackQuery(data=b"list_groups"))
     async def list_groups(event):
@@ -173,6 +185,7 @@ async def setup_bot():
     @bot.on(events.CallbackQuery(data=b"edit_verify_msg"))
     async def edit_verify_msg(event):
         if event.sender_id!= DEV_ID: return
+        set_state(event.sender_id, "wait_verify_msg")
         await event.edit(
             "✏️ **تعديل رسالة التحقق**\n\n"
             "ابعت الرسالة الجديدة اللي هتتبعت للمستخدمين\n\n"
@@ -182,11 +195,11 @@ async def setup_bot():
             "• متغيرات: {name} {group}",
             buttons=[[Button.inline("🔙", b"settings")]]
         )
-        bot.wait_verify_msg = True
 
     @bot.on(events.CallbackQuery(data=b"edit_success_msg"))
     async def edit_success_msg(event):
         if event.sender_id!= DEV_ID: return
+        set_state(event.sender_id, "wait_success_msg")
         await event.edit(
             "✅ **تعديل رسالة النجاح**\n\n"
             "ابعت الرسالة اللي هتظهر بعد التحقق\n\n"
@@ -196,11 +209,11 @@ async def setup_bot():
             "• متغير: {group}",
             buttons=[[Button.inline("🔙", b"settings")]]
         )
-        bot.wait_success_msg = True
 
     @bot.on(events.CallbackQuery(data=b"edit_btn"))
     async def edit_btn(event):
         if event.sender_id!= DEV_ID: return
+        set_state(event.sender_id, "wait_btn")
         await event.edit(
             "🔤 **تعديل نص الزر**\n\n"
             "ابعت النص الجديد للزر مع الايموجي البريميوم\n\n"
@@ -213,7 +226,6 @@ async def setup_bot():
             "💎 **هيظهر للكل طالما حسابك بريميوم**",
             buttons=[[Button.inline("🔙", b"settings")]]
         )
-        bot.wait_btn = True
 
     @bot.on(events.CallbackQuery(data=b"preview_msgs"))
     async def preview_msgs(event):
@@ -340,8 +352,11 @@ async def setup_bot():
     async def handle_input(event):
         if event.sender_id!= DEV_ID: return
 
-        if hasattr(bot, 'wait_group_id') and bot.wait_group_id:
-            bot.wait_group_id = False
+        state = get_state(event.sender_id)
+        if not state: return
+
+        if state == "wait_group_id":
+            clear_state(event.sender_id)
             try:
                 text = event.text.strip()
                 if text.startswith('https://t.me/'):
@@ -363,29 +378,30 @@ async def setup_bot():
             except Exception as e:
                 await event.reply(f"❌ فشل الاضافة\n\nتأكد ان:\n1. البوت ادمن في الجروب\n2. عنده صلاحية 'اضافة اعضاء'\n\n{e}")
 
-        elif hasattr(bot, 'wait_verify_msg') and bot.wait_verify_msg:
-            bot.wait_verify_msg = False
+        elif state == "wait_verify_msg":
+            clear_state(event.sender_id)
             DB["verify_msg"] = event.message.text
             DB["verify_msg_entities"] = [e.to_dict() for e in event.message.entities or []]
             save_db()
-            await event.reply("✅ تم حفظ رسالة التحقق بنجاح 💎")
+            await event.reply("✅ تم حفظ رسالة التحقق بنجاح 💎\n\nجرب المعاينة عشان تتأكد")
 
-        elif hasattr(bot, 'wait_success_msg') and bot.wait_success_msg:
-            bot.wait_success_msg = False
+        elif state == "wait_success_msg":
+            clear_state(event.sender_id)
             DB["success_msg"] = event.message.text
             DB["success_msg_entities"] = [e.to_dict() for e in event.message.entities or []]
             save_db()
-            await event.reply("✅ تم حفظ رسالة النجاح بنجاح 💎")
+            await event.reply("✅ تم حفظ رسالة النجاح بنجاح 💎\n\nجرب المعاينة عشان تتأكد")
 
-        elif hasattr(bot, 'wait_btn') and bot.wait_btn:
-            bot.wait_btn = False
+        elif state == "wait_btn":
+            clear_state(event.sender_id)
             DB["button_text"] = event.message.text
             DB["button_entities"] = [e.to_dict() for e in event.message.entities or []]
             save_db()
             await event.reply(
                 f"✅ تم حفظ نص الزر مع الايموجي البريميوم 💎\n\n"
                 f"النص: {event.message.text}\n\n"
-                f"الايموجي هيظهر للكل طالما حسابك بريميوم"
+                f"الايموجي هيظهر للكل طالما حسابك بريميوم\n"
+                f"جرب المعاينة عشان تتأكد"
             )
 
 async def main():
@@ -393,7 +409,7 @@ async def main():
         print("❌ BOT_TOKEN مش موجود")
         return
     await setup_bot()
-    print("✅ بوت الموافقة التلقائية V2.5 شغال - ايموجي بريميوم في الازرار")
+    print("✅ بوت الموافقة التلقائية V2.6 شغال - حفظ مضمون 100%")
     await bot.run_until_disconnected()
 
 if __name__ == '__main__':

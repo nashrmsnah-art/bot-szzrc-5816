@@ -7,23 +7,23 @@ API_HASH = '2829d6502df68cd12fab33cabf2851d2'
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 DEV_ID = 154919127
 DEV_USERNAME = "Devazf"
-DB_CHANNEL = -1003868650424 # حط ايدي قناة الداتا هنا
+DB_CHANNEL = -1002797179464 # حط ايدي قناة الداتا هنا
 
 DB_MSG_ID = None
 
 def get_default_db():
     return {
-        "groups": {}, # {gid: {name, enabled, verify_msg, success_msg, button_text, auto_timeout}}
-        "pending": {}, # {user_id: {group_id, time, chat_id}}
-        "blacklist": [], # [user_id, user_id]
-        "whitelist": [], # [user_id, user_id]
-        "admins": [DEV_ID], # [user_id, user_id]
+        "groups": {},
+        "pending": {},
+        "blacklist": [],
+        "whitelist": [],
+        "admins": [DEV_ID],
         "stats": {"approved": 0, "rejected": 0, "auto_rejected": 0},
-        "group_stats": {}, # {gid: {approved, rejected}}
-        "logs": [], # [{user_id, group_id, action, time}]
+        "group_stats": {},
+        "logs": [],
         "states": {},
         "settings": {
-            "global_timeout": 10, # دقايق
+            "global_timeout": 10,
             "default_verify_msg": "مرحباً {name}\n\nاضغط الزر عشان نقبلك في {group}",
             "default_success_msg": "تم قبولك في {group} بنجاح ✅",
             "default_button": "تحقق انك لست روبوت"
@@ -41,11 +41,11 @@ async def load_db():
                 DB_MSG_ID = msg.id
                 db_str = msg.text.replace("DB_V20:", "", 1)
                 DB = json.loads(db_str)
-                print("✅ V20 DB Loaded")
+                print("✅ V20.2 DB Loaded")
                 return
         msg = await bot.send_message(DB_CHANNEL, "DB_V20:" + json.dumps(get_default_db(), ensure_ascii=False))
         DB_MSG_ID = msg.id
-        print("✅ V20 DB Created")
+        print("✅ V20.2 DB Created")
     except Exception as e:
         print(f"❌ DB Error: {e}")
 
@@ -112,6 +112,7 @@ async def check_timeouts():
             gid = data["group_id"]
             cfg = get_group_config(gid)
             timeout = cfg["timeout"]
+            if timeout == 0: continue
             req_time = datetime.datetime.fromisoformat(data["time"])
             if (now - req_time).total_seconds() > timeout * 60:
                 try:
@@ -145,7 +146,7 @@ async def setup_bot():
             btns = [[Button.url("ضيف البوت لجروبك", f"https://t.me/{(await bot.get_me()).username}?startgroup=true")],
                     [Button.url("المبرمج", f"https://t.me/{DEV_USERNAME}")]]
             await event.reply(
-                f"**بوت الموافقة التلقائية V20**\n\n"
+                f"**بوت الموافقة التلقائية V20.2**\n\n"
                 f"البوت بيقبل طلبات الانضمام تلقائياً بعد التحقق\n\n"
                 f"تم قبول: {total} عضو\n\n"
                 f"مجاناً 100%",
@@ -161,7 +162,7 @@ async def setup_bot():
             [Button.url("المبرمج", f"https://t.me/{DEV_USERNAME}")]
         ]
         await event.reply(
-            f"**بوت V20 - لوحة التحكم**\n\n"
+            f"**بوت V20.2 - لوحة التحكم**\n\n"
             f"الجروبات: {len(DB['groups'])}\n"
             f"مقبول: {DB['stats']['approved']}\n"
             f"مرفوض: {DB['stats']['rejected']}\n"
@@ -170,6 +171,26 @@ async def setup_bot():
             f"قائمة بيضاء: {len(DB['whitelist'])}\n\n"
             f"**الحفظ في قناة خاصة - مضمون**",
             buttons=btns
+        )
+
+    @bot.on(events.NewMessage(pattern=r'/start verify_(\d+)_(-?\d+)'))
+    async def start_verify(event):
+        parts = event.pattern_match.groups()
+        user_id = int(parts[0])
+        group_id = parts[1]
+
+        if event.sender_id!= user_id:
+            return await event.reply("الرابط ده مش ليك")
+
+        if str(user_id) not in DB["pending"]:
+            return await event.reply("الطلب انتهى او اتقبل خلاص")
+
+        cfg = get_group_config(group_id)
+        markup = build_button_markup(user_id, group_id)
+
+        await event.reply(
+            cfg["verify_msg"].format(name=event.sender.first_name, group=cfg["name"]),
+            buttons=markup
         )
 
     @bot.on(events.CallbackQuery(data=b"add_g"))
@@ -357,7 +378,7 @@ async def setup_bot():
         total = s['approved'] + s['rejected'] + s['auto_rejected']
         rate = (s['approved'] / total * 100) if total > 0 else 0
 
-        text = f"**احصائيات البوت V20**\n\n"
+        text = f"**احصائيات البوت V20.2**\n\n"
         text += f"الاجمالي: {total}\n"
         text += f"مقبول: {s['approved']}\n"
         text += f"مرفوض: {s['rejected']}\n"
@@ -375,7 +396,7 @@ async def setup_bot():
         if not is_admin(event.sender_id): return
         text = "**اخر 20 سجل**\n\n"
         for log in DB["logs"][:20]:
-            action = {"approved": "قبول", "rejected": "رفض", "auto_rejected_timeout": "رفض تلقائي", "whitelist": "قائمة بيضاء", "blacklist": "قائمة سوداء"}.get(log["action"], log["action"])
+            action = {"approved": "قبول", "rejected": "رفض", "auto_rejected_timeout": "رفض تلقائي", "whitelist": "قائمة بيضاء", "blacklist": "قائمة سوداء", "auto_approved": "قبول تلقائي"}.get(log["action"], log["action"])
             time = datetime.datetime.fromisoformat(log["time"]).strftime("%m/%d %H:%M")
             text += f"{time} | {action}\n"
             text += f"User: `{log['user_id']}` | Group: `{log['group_id']}`\n\n"
@@ -433,6 +454,20 @@ async def setup_bot():
         await save_db()
         await event.edit("ابعت عدد الدقايق للمؤقت العام", buttons=[[Button.inline("رجوع", b"settings")]])
 
+    @bot.on(events.CallbackQuery(data=b"edit_default_msg"))
+    async def edit_default_msg(event):
+        if not is_admin(event.sender_id): return
+        set_state(event.sender_id, "wait_default_msg")
+        await save_db()
+        await event.edit("ابعت الرسالة الافتراضية الجديدة\n\nالمتغيرات: {name} {group}", buttons=[[Button.inline("رجوع", b"settings")]])
+
+    @bot.on(events.CallbackQuery(data=b"edit_default_btn"))
+    async def edit_default_btn(event):
+        if not is_admin(event.sender_id): return
+        set_state(event.sender_id, "wait_default_btn")
+        await save_db()
+        await event.edit("ابعت نص الزر الافتراضي الجديد", buttons=[[Button.inline("رجوع", b"settings")]])
+
     @bot.on(events.CallbackQuery(data=b"back"))
     async def back(event):
         await start_cmd(event)
@@ -440,15 +475,18 @@ async def setup_bot():
     @bot.on(events.Raw)
     async def join_handler(event):
         if isinstance(event, UpdateBotChatInviteRequester):
+            print(f"✅ طلب انضمام جديد!")
             chat_id = event.peer.channel_id if isinstance(event.peer, PeerChannel) else event.peer.chat_id
             user_id = event.user_id
             chat_id_str = str(-1000000000000 - chat_id) if chat_id > 0 else str(chat_id)
 
             if chat_id_str not in DB["groups"]:
+                print("❌ الجروب مش في الداتا")
                 return
 
             g = DB["groups"][chat_id_str]
             if not g["enabled"]:
+                print("❌ الجروب معطل")
                 return
 
             # قائمة سوداء
@@ -503,15 +541,25 @@ async def setup_bot():
 
             try:
                 await bot.send_message(user_id, msg, buttons=markup)
-            except:
+                print(f"✅ تم ارسال التحقق خاص لـ {user_id}")
+            except Exception as e:
+                print(f"❌ فشل الخاص: {e} - هبعت في الجروب")
                 try:
-                    await bot(functions.messages.HideChatJoinRequestRequest(
-                        peer=int(chat_id_str), user_id=user_id, approved=False
-                    ))
-                    DB["stats"]["rejected"] += 1
-                    add_log(user_id, chat_id_str, "rejected_cant_dm")
-                    await save_db()
-                except: pass
+                    mention = f"[{user_name}](tg://user?id={user_id})"
+                    bot_username = (await bot.get_me()).username
+                    deep_link = f"https://t.me/{bot_username}?start=verify_{user_id}_{chat_id_str}"
+
+                    await bot.send_message(
+                        int(chat_id_str),
+                        f"👋 {mention}\n\n"
+                        f"اضغط الزر تحت عشان نتحقق منك ونقبلك في الجروب\n"
+                        f"⏰ عندك {cfg['timeout']} دقيقة",
+                        buttons=[[Button.url("🔐 بدء التحقق", deep_link)]],
+                        parse_mode='md'
+                    )
+                    print(f"✅ تم ارسال التحقق في الجروب لـ {user_id}")
+                except Exception as e2:
+                    print(f"❌ فشل الارسال في الجروب: {e2}")
 
     @bot.on(events.CallbackQuery(pattern=b"v_"))
     async def verify(event):
@@ -691,12 +739,24 @@ async def setup_bot():
             except:
                 await event.reply("ارسل رقم صحيح")
 
+        elif state == "wait_default_msg":
+            clear_state(event.sender_id)
+            DB["settings"]["default_verify_msg"] = event.text
+            await save_db()
+            await event.reply("تم حفظ الرسالة الافتراضية")
+
+        elif state == "wait_default_btn":
+            clear_state(event.sender_id)
+            DB["settings"]["default_button"] = event.text
+            await save_db()
+            await event.reply("تم حفظ الزر الافتراضي")
+
 async def main():
     if not BOT_TOKEN:
         print("❌ BOT_TOKEN مش موجود")
         return
     await setup_bot()
-    print("✅ V20 Bot Running")
+    print("✅ V20.2 Bot Running")
     await bot.run_until_disconnected()
 
 if __name__ == '__main__':

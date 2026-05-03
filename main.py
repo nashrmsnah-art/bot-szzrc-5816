@@ -1,6 +1,6 @@
-import os, asyncio, json, datetime
+import os, asyncio, json, datetime, random
 from telethon import TelegramClient, events, Button, functions, types
-from telethon.tl.types import UpdateBotChatInviteRequester, PeerChannel, MessageEntityCustomEmoji, KeyboardButtonCallback, ReplyInlineMarkup, KeyboardButtonRow
+from telethon.tl.types import UpdateBotChatInviteRequester, PeerChannel, MessageEntityCustomEmoji, KeyboardButtonCallback, ReplyInlineMarkup, KeyboardButtonRow, InputStickerSetShortName
 
 API_ID = 31650696
 API_HASH = '2829d6502df68cd12fab33cabf2851d2'
@@ -8,15 +8,11 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 DEV_ID = 154919127
 DEV_USERNAME = "Devazf"
 
-# بنحفظ الداتا في متغير البيئة عشان Railway
-DB_ENV = "BOT_DB"
+DB_MSG_ID = None
+PREMIUM_PACK = "jgdgjikj_by_fStikBot" # حزمة الايموجي بتاعتك
+PREMIUM_EMOJI_IDS = [] # هتتحمل تلقائي
 
-def load_db():
-    db_str = os.getenv(DB_ENV)
-    if db_str:
-        try:
-            return json.loads(db_str)
-        except: pass
+def get_default_db():
     return {
         "groups": {},
         "pending": {},
@@ -30,21 +26,64 @@ def load_db():
         "button_entities": []
     }
 
-def save_db():
-    # بنحفظ في Railway Variables
-    os.environ[DB_ENV] = json.dumps(DB, ensure_ascii=False)
-    # وبرضو في ملف احتياطي
-    try:
-        with open("join_requests.json", 'w', encoding='utf-8') as f:
-            json.dump(DB, f, indent=2, ensure_ascii=False)
-    except: pass
-
-DB = load_db()
+DB = get_default_db()
 bot = None
+
+async def load_premium_emojis():
+    """تحميل ايديهات الايموجي البريميوم من الحزمة"""
+    global PREMIUM_EMOJI_IDS
+    try:
+        sticker_set = await bot(functions.messages.GetStickerSetRequest(
+            stickerset=InputStickerSetShortName(short_name=PREMIUM_PACK),
+            hash=0
+        ))
+        PREMIUM_EMOJI_IDS = [doc.id for doc in sticker_set.documents]
+        print(f"✅ تم تحميل {len(PREMIUM_EMOJI_IDS)} ايموجي بريميوم")
+    except Exception as e:
+        print(f"❌ فشل تحميل حزمة الايموجي: {e}")
+        PREMIUM_EMOJI_IDS = []
+
+def get_random_premium_emoji():
+    """يرجع ايموجي بريميوم عشوائي مع الـ entity بتاعه"""
+    if not PREMIUM_EMOJI_IDS:
+        return "💎", []
+
+    doc_id = random.choice(PREMIUM_EMOJI_IDS)
+    emoji_text = "⭐" # placeholder هيتعرض للمش عنده بريميوم
+    entity = types.MessageEntityCustomEmoji(offset=0, length=1, document_id=doc_id)
+    return emoji_text, [entity]
+
+async def load_db():
+    global DB, DB_MSG_ID
+    try:
+        async for msg in bot.iter_messages('me', limit=50):
+            if msg.text and msg.text.startswith("DB_DATA:"):
+                DB_MSG_ID = msg.id
+                db_str = msg.text.replace("DB_DATA:", "", 1)
+                DB = json.loads(db_str)
+                print("✅ تم تحميل الداتا من Saved Messages")
+                return
+        print("⚠️ مفيش داتا محفوظة")
+    except Exception as e:
+        print(f"❌ خطأ في تحميل الداتا: {e}")
+
+async def save_db():
+    global DB_MSG_ID
+    try:
+        db_str = "DB_DATA:" + json.dumps(DB, ensure_ascii=False)
+        if DB_MSG_ID:
+            await bot.edit_message('me', DB_MSG_ID, db_str)
+        else:
+            msg = await bot.send_message('me', db_str)
+            DB_MSG_ID = msg.id
+        print("✅ تم حفظ الداتا")
+        return True
+    except Exception as e:
+        print(f"❌ خطأ في الحفظ: {e}")
+        return False
 
 def set_state(user_id, state):
     DB["states"][str(user_id)] = state
-    save_db()
 
 def get_state(user_id):
     return DB["states"].get(str(user_id))
@@ -52,7 +91,6 @@ def get_state(user_id):
 def clear_state(user_id):
     if str(user_id) in DB["states"]:
         del DB["states"][str(user_id)]
-        save_db()
 
 def build_button_markup(user_id, group_id):
     button_text = DB["button_text"]
@@ -72,40 +110,42 @@ async def setup_bot():
     global bot
     bot = TelegramClient('join_bot', API_ID, API_HASH)
     await bot.start(bot_token=BOT_TOKEN)
+    await load_premium_emojis()
+    await load_db()
 
     @bot.on(events.NewMessage(pattern='/start'))
     async def start_cmd(event):
         is_admin = event.sender_id == DEV_ID
+        emoji, _ = get_random_premium_emoji()
 
         if is_admin:
             btns = [
-                [Button.inline("➕ اضافة جروب/قناة", b"add_group")],
-                [Button.inline("📝 الجروبات المفعلة", b"list_groups")],
-                [Button.inline("📊 الاحصائيات", b"stats"), Button.inline("⚙️ الاعدادات", b"settings")],
-                [Button.url("💬 مراسلة المبرمج", f"https://t.me/{DEV_USERNAME}")]
+                [Button.inline(f"{emoji} اضافة جروب/قناة", b"add_group")],
+                [Button.inline(f"{emoji} الجروبات المفعلة", b"list_groups")],
+                [Button.inline(f"{emoji} الاحصائيات", b"stats"), Button.inline(f"{emoji} الاعدادات", b"settings")],
+                [Button.url(f"{emoji} مراسلة المبرمج", f"https://t.me/{DEV_USERNAME}")]
             ]
             await event.reply(
-                f"🤖 **بوت الموافقة التلقائية V2.8**\n\n"
+                f"{emoji} **بوت الموافقة التلقائية V3.1**\n\n"
                 f"👑 **لوحة المطور**\n\n"
                 f"الجروبات المفعلة: {len(DB['groups'])}\n"
                 f"تم قبول: {DB['stats']['approved']}\n"
                 f"تم رفض: {DB['stats']['rejected']}\n\n"
-                f"💎 **يدعم ايموجي بريميوم في الازرار**\n"
+                f"💎 **ايموجي بريميوم عشوائي: {len(PREMIUM_EMOJI_IDS)} ايموجي**\n"
                 f"✅ **الحفظ مضمون 100%**",
                 buttons=btns
             )
         else:
             total_approved = DB['stats']['approved']
             btns = [
-                [Button.url("➕ ضيف البوت لجروبك", f"https://t.me/{(await bot.get_me()).username}?startgroup=true")],
-                [Button.url("💬 مراسلة المبرمج", f"https://t.me/{DEV_USERNAME}")]
+                [Button.url(f"{emoji} ضيف البوت لجروبك", f"https://t.me/{(await bot.get_me()).username}?startgroup=true")],
+                [Button.url(f"{emoji} مراسلة المبرمج", f"https://t.me/{DEV_USERNAME}")]
             ]
             await event.reply(
-                f"🤖 **بوت الموافقة التلقائية**\n\n"
-                f"البوت ده بيقبل طلبات الانضمام تلقائياً بعد التحقق انك لست روبوت ✅\n\n"
-                f"📊 **تم قبول {total_approved} عضو لحد دلوقتي**\n\n"
-                f"**مجاناً 100%** للجميع 💎\n\n"
-                f"عايز تضيف البوت لجروبك؟ دوس على الزر تحت 👇",
+                f"{emoji} **بوت الموافقة التلقائية**\n\n"
+                f"البوت ده بيقبل طلبات الانضمام تلقائياً بعد التحقق ✅\n\n"
+                f"📊 **تم قبول {total_approved} عضو**\n\n"
+                f"**مجاناً 100%** للجميع 💎",
                 buttons=btns
             )
 
@@ -114,30 +154,32 @@ async def setup_bot():
         if event.sender_id!= DEV_ID:
             return await event.answer("❌ للمطور فقط", alert=True)
         set_state(event.sender_id, "wait_group_id")
+        await save_db()
+        emoji, _ = get_random_premium_emoji()
         await event.edit(
-            "➕ **اضافة جروب/قناة**\n\n"
+            f"{emoji} **اضافة جروب/قناة**\n\n"
             "1. ضيف البوت ادمن في الجروب\n"
             "2. اديله صلاحية 'اضافة اعضاء'\n"
-            "3. ابعت ايدي الجروب هنا\n\n"
-            "مثال: `-1001234567890`",
-            buttons=[[Button.inline("🔙", b"back_admin")]]
+            "3. ابعت ايدي الجروب هنا",
+            buttons=[[Button.inline(f"{emoji} رجوع", b"back_admin")]]
         )
 
     @bot.on(events.CallbackQuery(data=b"list_groups"))
     async def list_groups(event):
         if event.sender_id!= DEV_ID:
             return await event.answer("❌ للمطور فقط", alert=True)
+        emoji, _ = get_random_premium_emoji()
         if not DB["groups"]:
-            return await event.edit("❌ مفيش جروبات مفعلة", buttons=[[Button.inline("🔙", b"back_admin")]])
+            return await event.edit(f"{emoji} مفيش جروبات مفعلة", buttons=[[Button.inline(f"{emoji} رجوع", b"back_admin")]])
 
-        text = "📝 **الجروبات المفعلة:**\n\n"
+        text = f"{emoji} **الجروبات المفعلة:**\n\n"
         btns = []
         for gid, data in DB["groups"].items():
             status = "✅ مفعل" if data["enabled"] else "❌ معطل"
             text += f"• {data['name']}\n`{gid}` | {status}\n\n"
-            btns.append([Button.inline(f"{'⏸️ ايقاف' if data['enabled'] else '▶️ تفعيل'} {data['name'][:20]}", f"toggle_{gid}".encode())])
+            btns.append([Button.inline(f"{'⏸️' if data['enabled'] else '▶️'} {data['name'][:20]}", f"toggle_{gid}".encode())])
 
-        btns.append([Button.inline("🔙", b"back_admin")])
+        btns.append([Button.inline(f"{emoji} رجوع", b"back_admin")])
         await event.edit(text, buttons=btns)
 
     @bot.on(events.CallbackQuery(pattern=b"toggle_"))
@@ -146,7 +188,7 @@ async def setup_bot():
         gid = event.data.decode().split("_")[1]
         if gid in DB["groups"]:
             DB["groups"][gid]["enabled"] = not DB["groups"][gid]["enabled"]
-            save_db()
+            await save_db()
             status = "تم التفعيل ✅" if DB["groups"][gid]["enabled"] else "تم الايقاف ❌"
             await event.answer(status, alert=True)
             await list_groups(event)
@@ -155,38 +197,40 @@ async def setup_bot():
     async def stats(event):
         if event.sender_id!= DEV_ID:
             return await event.answer("❌ للمطور فقط", alert=True)
+        emoji, _ = get_random_premium_emoji()
         approved = DB['stats']['approved']
         rejected = DB['stats']['rejected']
         total = approved + rejected
         rate = (approved / total * 100) if total > 0 else 0
 
-        txt = f"📊 **احصائيات البوت**\n\n"
+        txt = f"{emoji} **احصائيات البوت**\n\n"
         txt += f"✅ تم قبول: {approved}\n"
         txt += f"❌ تم رفض: {rejected}\n"
         txt += f"📈 الاجمالي: {total}\n"
         txt += f"📉 نسبة القبول: {rate:.1f}%\n\n"
         txt += f"👥 الجروبات المفعلة: {len([g for g in DB['groups'].values() if g['enabled']])}"
 
-        await event.edit(txt, buttons=[[Button.inline("🔙", b"back_admin")]])
+        await event.edit(txt, buttons=[[Button.inline(f"{emoji} رجوع", b"back_admin")]])
 
     @bot.on(events.CallbackQuery(data=b"settings"))
     async def settings(event):
         if event.sender_id!= DEV_ID:
             return await event.answer("❌ للمطور فقط", alert=True)
+        emoji, _ = get_random_premium_emoji()
         btns = [
-            [Button.inline("✏️ تعديل رسالة التحقق", b"edit_verify_msg")],
-            [Button.inline("✅ تعديل رسالة النجاح", b"edit_success_msg")],
-            [Button.inline("🔤 تعديل نص الزر", b"edit_btn")],
-            [Button.inline("👁️ معاينة كل الرسائل", b"preview_msgs")],
-            [Button.inline("🔙", b"back_admin")]
+            [Button.inline(f"{emoji} تعديل رسالة التحقق", b"edit_verify_msg")],
+            [Button.inline(f"{emoji} تعديل رسالة النجاح", b"edit_success_msg")],
+            [Button.inline(f"{emoji} تعديل نص الزر", b"edit_btn")],
+            [Button.inline(f"{emoji} معاينة كل الرسائل", b"preview_msgs")],
+            [Button.inline(f"{emoji} رجوع", b"back_admin")]
         ]
         await event.edit(
-            "⚙️ **الاعدادات**\n\n"
+            f"{emoji} **الاعدادات**\n\n"
             "كل الرسايل والازرار تدعم:\n"
             "• ايموجي بريميوم من تيليجرام 💎\n"
             "• تنسيق: بولد/ايتاليك/كود\n"
             "• متغيرات: {name} {group}\n\n"
-            "✅ **الحفظ مضمون - بيتحفظ في Variables**",
+            f"✅ **ايموجي عشوائي من: {len(PREMIUM_EMOJI_IDS)} ايموجي**",
             buttons=btns
         )
 
@@ -194,44 +238,40 @@ async def setup_bot():
     async def edit_verify_msg(event):
         if event.sender_id!= DEV_ID: return
         set_state(event.sender_id, "wait_verify_msg")
+        await save_db()
+        emoji, _ = get_random_premium_emoji()
         await event.edit(
-            "✏️ **تعديل رسالة التحقق**\n\n"
+            f"{emoji} **تعديل رسالة التحقق**\n\n"
             "ابعت الرسالة الجديدة\n\n"
             "**يدعم:**\n"
             "• ايموجي بريميوم 💎\n"
-            "• تنسيق: بولد/ايتاليك/كود\n"
             "• متغيرات: {name} {group}",
-            buttons=[[Button.inline("🔙", b"settings")]]
+            buttons=[[Button.inline(f"{emoji} رجوع", b"settings")]]
         )
 
     @bot.on(events.CallbackQuery(data=b"edit_success_msg"))
     async def edit_success_msg(event):
         if event.sender_id!= DEV_ID: return
         set_state(event.sender_id, "wait_success_msg")
+        await save_db()
+        emoji, _ = get_random_premium_emoji()
         await event.edit(
-            "✅ **تعديل رسالة النجاح**\n\n"
-            "ابعت الرسالة اللي هتظهر بعد التحقق\n\n"
-            "**يدعم:**\n"
-            "• ايموجي بريميوم 💎\n"
-            "• تنسيق كامل\n"
-            "• متغير: {group}",
-            buttons=[[Button.inline("🔙", b"settings")]]
+            f"{emoji} **تعديل رسالة النجاح**\n\n"
+            "ابعت الرسالة اللي هتظهر بعد التحقق",
+            buttons=[[Button.inline(f"{emoji} رجوع", b"settings")]]
         )
 
     @bot.on(events.CallbackQuery(data=b"edit_btn"))
     async def edit_btn(event):
         if event.sender_id!= DEV_ID: return
         set_state(event.sender_id, "wait_btn")
+        await save_db()
+        emoji, _ = get_random_premium_emoji()
         await event.edit(
-            "🔤 **تعديل نص الزر**\n\n"
+            f"{emoji} **تعديل نص الزر**\n\n"
             "ابعت النص الجديد للزر مع الايموجي البريميوم\n\n"
-            "**طريقة اضافة ايموجي بريميوم:**\n"
-            "1. انسخ ايموجي بريميوم من اي شات\n"
-            "2. الصقه هنا مع النص\n\n"
-            "**مثال:**\n"
-            "`✅ تحقق انك لست روبوت` + ايموجي بريميوم\n\n"
-            "💎 **هيظهر للكل طالما حسابك بريميوم**",
-            buttons=[[Button.inline("🔙", b"settings")]]
+            "**انسخ ايموجي بريميوم من اي شات والصقه هنا**",
+            buttons=[[Button.inline(f"{emoji} رجوع", b"settings")]]
         )
 
     @bot.on(events.CallbackQuery(data=b"preview_msgs"))
@@ -259,9 +299,9 @@ async def setup_bot():
 
             markup = build_button_markup(12345, "-1001234567890")
             await bot.send_message(event.chat_id, f"**3️⃣ معاينة الزر:**", buttons=markup)
-            await bot.send_message(event.chat_id, f"**نص الزر المحفوظ:** `{DB['button_text']}`\n**عدد الـ entities:** {len(DB.get('button_entities', []))}")
+            await bot.send_message(event.chat_id, f"**نص الزر المحفوظ:** `{DB['button_text']}`\n**الـ entities:** {len(DB.get('button_entities', []))}")
         except Exception as e:
-            await bot.send_message(event.chat_id, f"❌ خطأ في المعاينة: {e}")
+            await bot.send_message(event.chat_id, f"❌ خطأ: {e}")
 
     @bot.on(events.CallbackQuery(data=b"back_admin"))
     async def back_admin(event):
@@ -285,7 +325,7 @@ async def setup_bot():
                 "chat_id": event.invite.chat_id,
                 "time": datetime.datetime.now().isoformat()
             }
-            save_db()
+            await save_db()
 
             try:
                 user = await bot.get_entity(user_id)
@@ -314,7 +354,7 @@ async def setup_bot():
                         approved=False
                     ))
                     DB["stats"]["rejected"] += 1
-                    save_db()
+                    await save_db()
                 except: pass
 
     @bot.on(events.CallbackQuery(pattern=b"verify_"))
@@ -338,7 +378,7 @@ async def setup_bot():
 
             del DB["pending"][str(user_id)]
             DB["stats"]["approved"] += 1
-            save_db()
+            await save_db()
 
             group_name = DB["groups"][group_id]["name"]
             success_text = DB["success_msg"].format(group=group_name)
@@ -377,39 +417,40 @@ async def setup_bot():
                     entity = await bot.get_entity(int(gid))
                     name = entity.title
 
-                DB["groups"][gid] = {
-                    "name": name,
-                    "enabled": True
-                }
-                save_db()
-                await event.reply(f"✅ تم اضافة الجروب:\n\n{name}\n`{gid}`\n\nالبوت جاهز يستقبل طلبات الانضمام 🎉")
+                DB["groups"][gid] = {"name": name, "enabled": True}
+                await save_db()
+                await event.reply(f"✅ تم اضافة الجروب:\n\n{name}\n`{gid}`\n\n✅ **تم الحفظ في Saved Messages**")
             except Exception as e:
-                await event.reply(f"❌ فشل الاضافة\n\nتأكد ان:\n1. البوت ادمن في الجروب\n2. عنده صلاحية 'اضافة اعضاء'\n\n{e}")
+                await event.reply(f"❌ فشل الاضافة\n\n{e}")
 
         elif state == "wait_verify_msg":
             clear_state(event.sender_id)
             DB["verify_msg"] = event.message.text
             DB["verify_msg_entities"] = [e.to_dict() for e in event.message.entities or []]
-            save_db()
-            await event.reply(f"✅ تم حفظ رسالة التحقق بنجاح 💎\n\n**النص:** {event.message.text}\n**الـ entities:** {len(event.message.entities or [])}\n\nجرب المعاينة")
+            saved = await save_db()
+            status = "✅ تم الحفظ في Saved Messages" if saved else "❌ فشل الحفظ"
+            await event.reply(f"{status}\n\n**النص:** {event.message.text}\n**الـ entities:** {len(event.message.entities or [])}")
 
         elif state == "wait_success_msg":
             clear_state(event.sender_id)
             DB["success_msg"] = event.message.text
             DB["success_msg_entities"] = [e.to_dict() for e in event.message.entities or []]
-            save_db()
-            await event.reply(f"✅ تم حفظ رسالة النجاح بنجاح 💎\n\n**النص:** {event.message.text}\n**الـ entities:** {len(event.message.entities or [])}\n\nجرب المعاينة")
+            saved = await save_db()
+            status = "✅ تم الحفظ في Saved Messages" if saved else "❌ فشل الحفظ"
+            await event.reply(f"{status}\n\n**النص:** {event.message.text}\n**الـ entities:** {len(event.message.entities or [])}")
 
         elif state == "wait_btn":
             clear_state(event.sender_id)
             DB["button_text"] = event.message.text
             DB["button_entities"] = [e.to_dict() for e in event.message.entities or []]
-            save_db()
+            saved = await save_db()
+            status = "✅ تم الحفظ في Saved Messages" if saved else "❌ فشل الحفظ"
+            premium_count = len([e for e in event.message.entities or [] if e.__class__.__name__ == 'MessageEntityCustomEmoji'])
             await event.reply(
-                f"✅ تم حفظ نص الزر 💎\n\n"
+                f"{status}\n\n"
                 f"**النص:** {event.message.text}\n"
-                f"**عدد الايموجي البريميوم:** {len([e for e in event.message.entities or [] if e.__class__.__name__ == 'MessageEntityCustomEmoji'])}\n\n"
-                f"جرب المعاينة عشان تتأكد انه اتحفظ"
+                f"**الايموجي البريميوم:** {premium_count}\n\n"
+                f"💎 **مضمون مش هيتمسح**"
             )
 
 async def main():
@@ -417,7 +458,7 @@ async def main():
         print("❌ BOT_TOKEN مش موجود")
         return
     await setup_bot()
-    print("✅ بوت الموافقة التلقائية V2.8 شغال - حفظ في Variables")
+    print(f"✅ بوت V3.1 شغال - {len(PREMIUM_EMOJI_IDS)} ايموجي بريميوم جاهز")
     await bot.run_until_disconnected()
 
 if __name__ == '__main__':

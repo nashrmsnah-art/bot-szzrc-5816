@@ -1,18 +1,20 @@
 import os, asyncio, json, datetime
 from telethon import TelegramClient, events, Button, functions
-from telethon.tl.types import UpdateBotChatInviteRequester, PeerChannel, MessageEntityCustomEmoji
-from telethon.tl.custom import Button
+from telethon.tl.types import (
+    UpdateBotChatInviteRequester, PeerChannel, MessageEntityCustomEmoji,
+    KeyboardButtonCallback, ReplyInlineMarkup, KeyboardButtonRow
+)
 
 API_ID = 31650696
 API_HASH = '2829d6502df68cd12fab33cabf2851d2'
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 DEV_ID = 154919127
 DEV_USERNAME = "Devazf"
-DB_CHANNEL = -1003868650424 # قناة الداتا - غيرها
+DB_CHANNEL = -1003868650424 # غيرها لقناة فاضية عندك
 
 DB_MSG_ID = None
 
-# ايديهات الايموجي البريميوم - غيرها لو عايز
+# ايديهات الايموجي البريميوم
 EMOJI_SHIELD = 5111936883915490730 # 🛡️
 EMOJI_FROG = 5111976779866703826 # 🐸
 EMOJI_CHECK = 5111793865799501619 # ✅
@@ -132,20 +134,29 @@ async def setup_bot():
     await load_db()
     asyncio.create_task(check_timeouts())
 
-    # ===== /start مع زرار بريميوم =====
+    # ===== /start مع زرار بريميوم شغال =====
     @bot.on(events.NewMessage(pattern='/start'))
     async def start_cmd(event):
         if not is_admin(event.sender_id):
-            # رسالة للمستخدم العادي + زرار بريميوم
+            # الرسالة فيها ايموجي بريميوم
             text = "أهلاً بك في بوت القبول."
             entities = [MessageEntityCustomEmoji(15, 1, EMOJI_FROG)]
 
-            btn_text = "المطور"
-            btn_entities = [MessageEntityCustomEmoji(0, 1, EMOJI_FROG)]
+            # الزرار البريميوم بالـ Raw API
+            btn_text = "المطور " # مسافة في الاخر مهمة
+            btn_entities = [MessageEntityCustomEmoji(6, 1, EMOJI_FROG)] # offset=6 بعد كلمة المطور
 
-            buttons = [[Button.inline(btn_text, b"dev_btn", text_entities=btn_entities)]]
+            markup = ReplyInlineMarkup([
+                KeyboardButtonRow([
+                    KeyboardButtonCallback(
+                        text=btn_text,
+                        data=b"dev_btn",
+                        text_entities=btn_entities
+                    )
+                ])
+            ])
 
-            await event.reply(text, entities=entities, buttons=buttons)
+            await bot.send_message(event.chat_id, text, entities=entities, buttons=markup)
             return
 
         # لوحة تحكم الادمن
@@ -239,7 +250,6 @@ async def setup_bot():
             if not g["enabled"]:
                 return
 
-            # قبول تلقائي لو متحقق قبل كده
             if str(user_id) in DB["verified_phones"]:
                 try:
                     await bot(functions.messages.HideChatJoinRequestRequest(
@@ -267,7 +277,6 @@ async def setup_bot():
                 user_name = "صديقي"
                 group_name = g["name"]
 
-            # رسالة التحقق بالايموجي البريميوم
             text = f"أهلاً {user_name}\n\nقبل قبولك في مجموعة {group_name} يجب التحقق من أنك مستخدم حقيقي.\n\nيرجى مشاركة رقم هاتفك عبر الزر أدناه."
 
             try:
@@ -298,7 +307,7 @@ async def setup_bot():
     @bot.on(events.NewMessage)
     async def handle_states(event):
         uid = str(event.sender_id)
-        if uid not in DB["states"]:
+        if uid not in DB["states"] or event.contact:
             return
 
         state = DB["states"][uid]

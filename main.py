@@ -7,10 +7,11 @@ API_HASH = '2829d6502df68cd12fab33cabf2851d2'
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 DEV_ID = 154919127
 DEV_USERNAME = "Devazf"
+DB_CHANNEL = -1003868650424 # حط ايدي القناة بتاعتك هنا
 
 DB_MSG_ID = None
-PREMIUM_PACK = "jgdgjikj_by_fStikBot" # حزمة الايموجي بتاعتك
-PREMIUM_EMOJI_IDS = [] # هتتحمل تلقائي
+PREMIUM_PACK = "jgdgjikj_by_fStikBot"
+PREMIUM_EMOJI_IDS = []
 
 def get_default_db():
     return {
@@ -30,7 +31,6 @@ DB = get_default_db()
 bot = None
 
 async def load_premium_emojis():
-    """تحميل ايديهات الايموجي البريميوم من الحزمة"""
     global PREMIUM_EMOJI_IDS
     try:
         sticker_set = await bot(functions.messages.GetStickerSetRequest(
@@ -44,26 +44,27 @@ async def load_premium_emojis():
         PREMIUM_EMOJI_IDS = []
 
 def get_random_premium_emoji():
-    """يرجع ايموجي بريميوم عشوائي مع الـ entity بتاعه"""
     if not PREMIUM_EMOJI_IDS:
         return "💎", []
-
     doc_id = random.choice(PREMIUM_EMOJI_IDS)
-    emoji_text = "⭐" # placeholder هيتعرض للمش عنده بريميوم
+    emoji_text = "⭐"
     entity = types.MessageEntityCustomEmoji(offset=0, length=1, document_id=doc_id)
     return emoji_text, [entity]
 
 async def load_db():
     global DB, DB_MSG_ID
     try:
-        async for msg in bot.iter_messages('me', limit=50):
+        async for msg in bot.iter_messages(DB_CHANNEL, limit=10):
             if msg.text and msg.text.startswith("DB_DATA:"):
                 DB_MSG_ID = msg.id
                 db_str = msg.text.replace("DB_DATA:", "", 1)
                 DB = json.loads(db_str)
-                print("✅ تم تحميل الداتا من Saved Messages")
+                print("✅ تم تحميل الداتا من القناة")
                 return
-        print("⚠️ مفيش داتا محفوظة")
+        # لو مفيش رسالة داتا، نعمل واحدة جديدة
+        msg = await bot.send_message(DB_CHANNEL, "DB_DATA:" + json.dumps(get_default_db(), ensure_ascii=False))
+        DB_MSG_ID = msg.id
+        print("✅ تم انشاء رسالة داتا جديدة")
     except Exception as e:
         print(f"❌ خطأ في تحميل الداتا: {e}")
 
@@ -72,11 +73,11 @@ async def save_db():
     try:
         db_str = "DB_DATA:" + json.dumps(DB, ensure_ascii=False)
         if DB_MSG_ID:
-            await bot.edit_message('me', DB_MSG_ID, db_str)
+            await bot.edit_message(DB_CHANNEL, DB_MSG_ID, db_str)
         else:
-            msg = await bot.send_message('me', db_str)
+            msg = await bot.send_message(DB_CHANNEL, db_str)
             DB_MSG_ID = msg.id
-        print("✅ تم حفظ الداتا")
+        print("✅ تم حفظ الداتا في القناة")
         return True
     except Exception as e:
         print(f"❌ خطأ في الحفظ: {e}")
@@ -126,13 +127,13 @@ async def setup_bot():
                 [Button.url(f"{emoji} مراسلة المبرمج", f"https://t.me/{DEV_USERNAME}")]
             ]
             await event.reply(
-                f"{emoji} **بوت الموافقة التلقائية V3.1**\n\n"
+                f"{emoji} **بوت الموافقة التلقائية V3.2**\n\n"
                 f"👑 **لوحة المطور**\n\n"
                 f"الجروبات المفعلة: {len(DB['groups'])}\n"
                 f"تم قبول: {DB['stats']['approved']}\n"
                 f"تم رفض: {DB['stats']['rejected']}\n\n"
-                f"💎 **ايموجي بريميوم عشوائي: {len(PREMIUM_EMOJI_IDS)} ايموجي**\n"
-                f"✅ **الحفظ مضمون 100%**",
+                f"💎 **ايموجي بريميوم: {len(PREMIUM_EMOJI_IDS)}**\n"
+                f"✅ **الحفظ في قناة خاصة**",
                 buttons=btns
             )
         else:
@@ -230,7 +231,7 @@ async def setup_bot():
             "• ايموجي بريميوم من تيليجرام 💎\n"
             "• تنسيق: بولد/ايتاليك/كود\n"
             "• متغيرات: {name} {group}\n\n"
-            f"✅ **ايموجي عشوائي من: {len(PREMIUM_EMOJI_IDS)} ايموجي**",
+            f"✅ **الحفظ في قناة خاصة - مضمون**",
             buttons=btns
         )
 
@@ -418,8 +419,9 @@ async def setup_bot():
                     name = entity.title
 
                 DB["groups"][gid] = {"name": name, "enabled": True}
-                await save_db()
-                await event.reply(f"✅ تم اضافة الجروب:\n\n{name}\n`{gid}`\n\n✅ **تم الحفظ في Saved Messages**")
+                saved = await save_db()
+                status = "✅ تم الحفظ في القناة" if saved else "❌ فشل الحفظ"
+                await event.reply(f"{status}\n\n✅ تم اضافة الجروب:\n\n{name}\n`{gid}`")
             except Exception as e:
                 await event.reply(f"❌ فشل الاضافة\n\n{e}")
 
@@ -428,7 +430,7 @@ async def setup_bot():
             DB["verify_msg"] = event.message.text
             DB["verify_msg_entities"] = [e.to_dict() for e in event.message.entities or []]
             saved = await save_db()
-            status = "✅ تم الحفظ في Saved Messages" if saved else "❌ فشل الحفظ"
+            status = "✅ تم الحفظ في القناة" if saved else "❌ فشل الحفظ"
             await event.reply(f"{status}\n\n**النص:** {event.message.text}\n**الـ entities:** {len(event.message.entities or [])}")
 
         elif state == "wait_success_msg":
@@ -436,7 +438,7 @@ async def setup_bot():
             DB["success_msg"] = event.message.text
             DB["success_msg_entities"] = [e.to_dict() for e in event.message.entities or []]
             saved = await save_db()
-            status = "✅ تم الحفظ في Saved Messages" if saved else "❌ فشل الحفظ"
+            status = "✅ تم الحفظ في القناة" if saved else "❌ فشل الحفظ"
             await event.reply(f"{status}\n\n**النص:** {event.message.text}\n**الـ entities:** {len(event.message.entities or [])}")
 
         elif state == "wait_btn":
@@ -444,7 +446,7 @@ async def setup_bot():
             DB["button_text"] = event.message.text
             DB["button_entities"] = [e.to_dict() for e in event.message.entities or []]
             saved = await save_db()
-            status = "✅ تم الحفظ في Saved Messages" if saved else "❌ فشل الحفظ"
+            status = "✅ تم الحفظ في القناة" if saved else "❌ فشل الحفظ"
             premium_count = len([e for e in event.message.entities or [] if e.__class__.__name__ == 'MessageEntityCustomEmoji'])
             await event.reply(
                 f"{status}\n\n"
@@ -458,7 +460,7 @@ async def main():
         print("❌ BOT_TOKEN مش موجود")
         return
     await setup_bot()
-    print(f"✅ بوت V3.1 شغال - {len(PREMIUM_EMOJI_IDS)} ايموجي بريميوم جاهز")
+    print(f"✅ بوت V3.2 شغال - {len(PREMIUM_EMOJI_IDS)} ايموجي بريميوم")
     await bot.run_until_disconnected()
 
 if __name__ == '__main__':

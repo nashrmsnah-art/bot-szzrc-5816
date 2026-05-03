@@ -1,6 +1,7 @@
 import os, asyncio, json, datetime
 from telethon import TelegramClient, events, Button
-from telethon.tl.functions.messages import HideChatJoinRequestRequest, ApproveChatJoinRequestRequest
+from telethon.tl.functions.channels import ApproveJoinRequestRequest as ApproveChatJoinRequestRequest
+from telethon.tl.functions.channels import HideJoinRequestRequest as HideChatJoinRequestRequest
 from telethon.tl.types import UpdateBotChatInviteRequester, PeerChannel, MessageEntityCustomEmoji
 
 API_ID = 31650696

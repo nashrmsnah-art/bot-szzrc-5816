@@ -1,4 +1,0 @@
-*.session
-*.json
-__pycache__/
-.env

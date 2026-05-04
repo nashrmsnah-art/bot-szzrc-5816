@@ -4,15 +4,11 @@ from telethon.tl.types import MessageEntityCustomEmoji, KeyboardButtonCallback, 
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib import style
-from dotenv import load_dotenv  # ← ضيف ده
-load_dotenv()  # ← وضيف ده
+from dotenv import load_dotenv
 
-API_ID = int(os.getenv("API_ID"))  # ← عدّل ده
-API_HASH = os.getenv("API_HASH")   # ← عدّل ده  
-BOT_TOKEN = os.getenv("BOT_TOKEN") # ← عدّل ده
 DEV_ID = 154919127
 DEV_USERNAME = "Devazf"
-MY_WALLET = "UQDs6lE6okwikoEI__0YVv-RhszGBKUJc_qJoayfyosTejY4"
+MY_WALLET = "UQAiD3sTRHpH97N9Tg8RSydsl7DL-iLR_GB9RLNkXaRL0Pao"
 
 # ايموجي بريميوم
 EMOJI_TON = 5465167687347457679
@@ -28,8 +24,6 @@ EMOJI_WALLET = 5461121042872574248
 EMOJI_USERS = 5469986292290887040
 EMOJI_NUMBERS = 5467860858070661953
 EMOJI_ROCKET = 5461139466883749824
-
-bot = TelegramClient('tonkit_v120', API_ID, API_HASH)
 
 RATES = {"USD_EGP": 48.6, "USD_IQD": 1310, "USD_ASIA": 1320, "USD_ZAIN": 1325, "USD_MASTER": 1340}
 
@@ -465,6 +459,14 @@ async def handle_update(event):
     except: pass
 
 async def main():
+    load_dotenv()
+    API_ID = int(os.getenv("API_ID"))
+    API_HASH = os.getenv("API_HASH")
+    BOT_TOKEN = os.getenv("BOT_TOKEN")
+
+    global bot
+    bot = TelegramClient('tonkit_v120', API_ID, API_HASH)
+
     await bot.start(bot_token=BOT_TOKEN)
     asyncio.create_task(update_rates_auto())
     asyncio.create_task(check_alerts())

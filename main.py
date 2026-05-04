@@ -123,14 +123,10 @@ def format_price(amount):
         return f"{amount:.4f}"
 
 def main_buttons():
-    fragment_text = "Fragment "
-    fragment_entities = [MessageEntityCustomEmoji(9, 1, EMOJI_LINK)]
-    dev_text = "المبرمج "
-    dev_entities = [MessageEntityCustomEmoji(7, 1, EMOJI_FROG)]
     return ReplyInlineMarkup([
         KeyboardButtonRow([
-            KeyboardButtonCallback(text=fragment_text, data=b"fragment", text_entities=fragment_entities),
-            KeyboardButtonCallback(text=dev_text, data=b"dev", text_entities=dev_entities)
+            Button.url("Fragment 🔗", "https://fragment.com"),
+            Button.url("المبرمج 🐸", f"https://t.me/{DEV_USERNAME}")
         ]),
         KeyboardButtonRow([
             Button.inline("📊 شارت 7 ايام", b"chart7d"),
@@ -142,7 +138,6 @@ def main_buttons():
             Button.inline("🔄 تحديث", b"refresh")
         ])
     ])
-
 def generate_chart(days=7):
     data = cache["chart_7d"] if days == 7 else cache["chart_24h"]
     title = "TON/USDT - 7 Days" if days == 7 else "TON/USDT - 24 Hours"

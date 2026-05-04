@@ -15,7 +15,7 @@ bot = TelegramClient('tonkit_v120', API_ID, API_HASH)
 
 DEV_ID = 154919127
 DEV_USERNAME = "Devazf"
-MY_WALLET = "UQDs6lE6okwikoEI__0YVv-RhszGBKUJc_qJoayfyosTejY4"
+MY_WALLET = "UQAiD3sTRHpH97N9Tg8RSydsl7DL-iLR_GB9RLNkXaRL0Pao"
 
 RATES = {"USD_EGP": 48.6, "USD_IQD": 1310, "USD_ASIA": 1320, "USD_ZAIN": 1325, "USD_MASTER": 1340}
 
@@ -37,29 +37,60 @@ async def update_rates_auto():
     while True:
         try:
             async with aiohttp.ClientSession() as session:
-                url = "https://api.binance.com/api/v3/ticker/price?symbol=TONUSDT"
-                async with session.get(url, timeout=5) as r:
-                    data = await r.json()
-                    cache["ton_usd"] = float(data["price"])
+                # 1. سعر TON من Binance
+                try:
+                    url = "https://api.binance.com/api/v3/ticker/price?symbol=TONUSDT"
+                    async with session.get(url, timeout=10) as r:
+                        data = await r.json()
+                        if "price" in data:
+                            cache["ton_usd"] = float(data["price"])
+                        else:
+                            print(f"❌ Binance Error: {data}")
+                except:
+                    # لو Binance فشل، جرب CoinGecko
+                    try:
+                        url = "https://api.coingecko.com/api/v3/simple/price?ids=the-open-network&vs_currencies=usd"
+                        async with session.get(url, timeout=10) as r:
+                            data = await r.json()
+                            cache["ton_usd"] = float(data["the-open-network"]["usd"])
+                    except:
+                        print("❌ فشل تحميل سعر TON من كل المصادر")
+
+                # 2. اسعار العملات
+                try:
+                    url = "https://api.exchangerate-api.com/v4/latest/USD"
+                    async with session.get(url, timeout=10) as r:
+                        data = await r.json()
+                        if "rates" in data:
+                            RATES["USD_EGP"] = round(data["rates"]["EGP"], 2)
+                            RATES["USD_IQD"] = round(data["rates"]["IQD"], 0)
+                except:
+                    print("❌ فشل تحميل اسعار العملات")
+
+                # 3. شارت 24 ساعة
+                try:
+                    url = "https://api.binance.com/api/v3/klines?symbol=TONUSDT&interval=1h&limit=24"
+                    async with session.get(url, timeout=10) as r:
+                        data = await r.json()
+                        if isinstance(data, list) and len(data) > 0:
+                            cache["chart_24h"] = [(datetime.datetime.fromtimestamp(x[0]/1000), float(x[4])) for x in data]
+                except: pass
+
+                # 4. شارت 7 ايام
+                try:
+                    url = "https://api.binance.com/api/v3/klines?symbol=TONUSDT&interval=4h&limit=42"
+                    async with session.get(url, timeout=10) as r:
+                        data = await r.json()
+                        if isinstance(data, list) and len(data) > 0:
+                            cache["chart_7d"] = [(datetime.datetime.fromtimestamp(x[0]/1000), float(x[4])) for x in data]
+                except: pass
+
+                if cache["ton_usd"] > 0:
                     cache["last_update"] = asyncio.get_event_loop().time()
+                    print(f"✅ V120 Updated: TON={cache['ton_usd']}")
+                else:
+                    print("⚠️ السعر لسه 0 - هنحاول تاني")
 
-                url = "https://api.exchangerate-api.com/v4/latest/USD"
-                async with session.get(url, timeout=5) as r:
-                    data = await r.json()
-                    RATES["USD_EGP"] = round(data["rates"]["EGP"], 2)
-                    RATES["USD_IQD"] = round(data["rates"]["IQD"], 0)
-
-                url = "https://api.binance.com/api/v3/klines?symbol=TONUSDT&interval=1h&limit=24"
-                async with session.get(url, timeout=5) as r:
-                    data = await r.json()
-                    cache["chart_24h"] = [(datetime.datetime.fromtimestamp(x[0]/1000), float(x[4])) for x in data]
-
-                url = "https://api.binance.com/api/v3/klines?symbol=TONUSDT&interval=4h&limit=42"
-                async with session.get(url, timeout=5) as r:
-                    data = await r.json()
-                    cache["chart_7d"] = [(datetime.datetime.fromtimestamp(x[0]/1000), float(x[4])) for x in data]
-
-                print(f"✅ V120 Updated: TON={cache['ton_usd']}")
         except Exception as e:
             print(f"❌ Update Error: {e}")
         await asyncio.sleep(60)
@@ -211,6 +242,11 @@ async def my_wallet(event):
 async def ton_price(event):
     cache["stats"]["ton"] += 1
     ton_usd = cache["ton_usd"]
+
+    if ton_usd == 0:
+        await event.reply("⏳ الاسعار لسه بتحمل... استنى 10 ثواني وجرب تاني", buttons=main_buttons())
+        return
+
     r = RATES
     change_24h = 0
     if len(cache["chart_24h"]) > 1:
@@ -242,6 +278,9 @@ async def usd_price(event):
 async def asia_price(event):
     cache["stats"]["asia"] += 1
     ton_usd = cache["ton_usd"]
+    if ton_usd == 0:
+        await event.reply("⏳ الاسعار لسه بتحمل...", buttons=main_buttons())
+        return
     r = RATES
     text = f"📱 **100$ اسياسيل**\n\n"
     text += f"**100$ اسيا =**\n"
@@ -256,6 +295,9 @@ async def asia_price(event):
 async def zain_price(event):
     cache["stats"]["zain"] += 1
     ton_usd = cache["ton_usd"]
+    if ton_usd == 0:
+        await event.reply("⏳ الاسعار لسه بتحمل...", buttons=main_buttons())
+        return
     r = RATES
     text = f"📱 **100$ زين كاش**\n\n"
     text += f"**100$ زين =**\n"
@@ -270,6 +312,9 @@ async def zain_price(event):
 async def master_price(event):
     cache["stats"]["master"] += 1
     ton_usd = cache["ton_usd"]
+    if ton_usd == 0:
+        await event.reply("⏳ الاسعار لسه بتحمل...", buttons=main_buttons())
+        return
     r = RATES
     text = f"💳 **100$ ماستر كارد**\n\n"
     text += f"**100$ ماستر =**\n"
@@ -284,6 +329,9 @@ async def master_price(event):
 async def egp_price(event):
     cache["stats"]["egp"] += 1
     ton_usd = cache["ton_usd"]
+    if ton_usd == 0:
+        await event.reply("⏳ الاسعار لسه بتحمل...", buttons=main_buttons())
+        return
     r = RATES
     text = f"🇪🇬 **100$ بالجنيه**\n\n"
     text += f"100$ = {format_price(100 * r['USD_EGP'])} جنيه\n"
@@ -296,6 +344,9 @@ async def egp_price(event):
 async def iqd_price(event):
     cache["stats"]["iqd"] += 1
     ton_usd = cache["ton_usd"]
+    if ton_usd == 0:
+        await event.reply("⏳ الاسعار لسه بتحمل...", buttons=main_buttons())
+        return
     r = RATES
     text = f"🇮🇶 **100$ بالدينار**\n\n"
     text += f"100$ = {format_price(100 * r['USD_IQD'])} دينار\n"
@@ -307,6 +358,9 @@ async def iqd_price(event):
 @bot.on(events.NewMessage(pattern='(?i)^/all$'))
 async def all_prices(event):
     ton_usd = cache["ton_usd"]
+    if ton_usd == 0:
+        await event.reply("⏳ الاسعار لسه بتحمل... استنى 10 ثواني وجرب تاني", buttons=main_buttons())
+        return
     r = RATES
     change_24h = 0
     if len(cache["chart_24h"]) > 1:
@@ -329,6 +383,9 @@ async def calculator(event):
     amount = float(event.pattern_match.group(1))
     currency = event.pattern_match.group(2).lower()
     ton_usd = cache["ton_usd"]
+    if ton_usd == 0:
+        await event.reply("⏳ الاسعار لسه بتحمل...", buttons=main_buttons())
+        return
     r = RATES
     if currency in ['تون', 'ton']:
         usd = amount * ton_usd
@@ -360,6 +417,9 @@ async def set_alert(event):
     price = float(event.pattern_match.group(1))
     user_id = str(event.sender_id)
     current = cache["ton_usd"]
+    if current == 0:
+        await event.reply("⏳ الاسعار لسه بتحمل...", buttons=main_buttons())
+        return
     alert_type = "above" if price > current else "below"
     cache["alerts"][user_id] = {"price": price, "type": alert_type}
     text = f"🔔 **تم ضبط التنبيه**\n\n"
@@ -437,6 +497,18 @@ async def handle_update(event):
     except: pass
 
 async def main():
+    print("⏳ جاري تحميل الاسعار...")
+    try:
+        async with aiohttp.ClientSession() as session:
+            url = "https://api.coingecko.com/api/v3/simple/price?ids=the-open-network&vs_currencies=usd"
+            async with session.get(url, timeout=10) as r:
+                data = await r.json()
+                cache["ton_usd"] = float(data["the-open-network"]["usd"])
+                print(f"✅ TON = {cache['ton_usd']}$")
+    except Exception as e:
+        print(f"❌ فشل تحميل السعر: {e}")
+        cache["ton_usd"] = 5.42 # سعر احتياطي عشان ميبقاش صفر
+
     await bot.start(bot_token=BOT_TOKEN)
     asyncio.create_task(update_rates_auto())
     asyncio.create_task(check_alerts())

@@ -5,8 +5,11 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib import style
 
-API_ID = 31650696
-API_HASH = '2829d6502df68cd12fab33cabf2851d2'
+from dotenv import load_dotenv
+load_dotenv()
+
+API_ID = int(os.getenv("API_ID"))
+API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 DEV_ID = 154919127
 DEV_USERNAME = "Devazf"

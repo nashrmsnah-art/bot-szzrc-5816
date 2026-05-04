@@ -1,6 +1,6 @@
 import os, asyncio, aiohttp, datetime, io, re
 from telethon import TelegramClient, events, Button
-from telethon.tl.types import MessageEntityCustomEmoji, KeyboardButtonCallback, ReplyInlineMarkup, KeyboardButtonRow
+from telethon.tl.types import ReplyInlineMarkup, KeyboardButtonRow
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from matplotlib import style
@@ -16,21 +16,6 @@ bot = TelegramClient('tonkit_v120', API_ID, API_HASH)
 DEV_ID = 154919127
 DEV_USERNAME = "Devazf"
 MY_WALLET = "UQDs6lE6okwikoEI__0YVv-RhszGBKUJc_qJoayfyosTejY4"
-
-# ايموجي بريميوم
-EMOJI_TON = 5465167687347457679
-EMOJI_DOLLAR = 5465275063733820542
-EMOJI_CHART = 5341837545323734099
-EMOJI_LINK = 5348400065337151036
-EMOJI_FROG = 5384636646954847260
-EMOJI_PHONE = 5341509066345594447
-EMOJI_CARD = 5377490785235135237
-EMOJI_FIRE = 5465466366967323446
-EMOJI_BELL = 5463101668289519385
-EMOJI_WALLET = 5461121042872574248
-EMOJI_USERS = 5469986292290887040
-EMOJI_NUMBERS = 5467860858070661953
-EMOJI_ROCKET = 5461139466883749824
 
 RATES = {"USD_EGP": 48.6, "USD_IQD": 1310, "USD_ASIA": 1320, "USD_ZAIN": 1325, "USD_MASTER": 1340}
 
@@ -138,6 +123,7 @@ def main_buttons():
             Button.inline("🔄 تحديث", b"refresh")
         ])
     ])
+
 def generate_chart(days=7):
     data = cache["chart_7d"] if days == 7 else cache["chart_24h"]
     title = "TON/USDT - 7 Days" if days == 7 else "TON/USDT - 24 Hours"
@@ -182,13 +168,7 @@ async def format_tonkit(wallet_address, balance_ton, username="игрок"):
             text += f"{DEMO_NUMBERS[i]} | {DEMO_NUMBERS[i+1]} |\n"
         else:
             text += f"{DEMO_NUMBERS[i]} |\n"
-    entities = [
-        MessageEntityCustomEmoji(text.find("Wallet"), 1, EMOJI_WALLET),
-        MessageEntityCustomEmoji(text.find("Balance"), 1, EMOJI_TON),
-        MessageEntityCustomEmoji(text.find("Users"), 1, EMOJI_USERS),
-        MessageEntityCustomEmoji(text.find("Numbers"), 1, EMOJI_NUMBERS),
-    ]
-    return text, entities
+    return text
 
 @bot.on(events.NewMessage(pattern='/start'))
 async def start_cmd(event):
@@ -208,25 +188,24 @@ async def start_cmd(event):
     text += "• /alert 5.5 - تنبيه سعر\n"
     text += "• تحديث تلقائي كل دقيقة\n"
     text += "• شارت PNG حقيقي"
-    entities = [MessageEntityCustomEmoji(0, 1, EMOJI_TON), MessageEntityCustomEmoji(17, 1, EMOJI_ROCKET)]
-    await event.reply(text, entities=entities, buttons=main_buttons())
+    await event.reply(text, buttons=main_buttons())
 
 @bot.on(events.NewMessage(pattern=r'(?i)^(UQ|EQ|kQ|0Q)[A-Za-z0-9_-]{46}$'))
 async def wallet_check(event):
     wallet = event.text.strip()
     msg = await event.reply("⏳ جاري جلب البيانات...")
     balance = await get_wallet_balance(wallet)
-    text, entities = await format_tonkit(wallet, balance)
+    text = await format_tonkit(wallet, balance)
     await msg.delete()
-    await bot.send_message(event.chat_id, text, entities=entities, buttons=main_buttons())
+    await bot.send_message(event.chat_id, text, buttons=main_buttons())
 
 @bot.on(events.NewMessage(pattern='(?i)^/wallet$'))
 async def my_wallet(event):
     msg = await event.reply("⏳ جاري جلب بيانات محفظتك...")
     balance = await get_wallet_balance(MY_WALLET)
-    text, entities = await format_tonkit(MY_WALLET, balance, "игрок")
+    text = await format_tonkit(MY_WALLET, balance, "игрок")
     await msg.delete()
-    await bot.send_message(event.chat_id, text, entities=entities, buttons=main_buttons())
+    await bot.send_message(event.chat_id, text, buttons=main_buttons())
 
 @bot.on(events.NewMessage(pattern='(?i)^(تون|ton)$'))
 async def ton_price(event):
@@ -244,8 +223,7 @@ async def ton_price(event):
     text += f"├ {format_price(ton_usd * r['USD_ZAIN'])} زين كاش\n"
     text += f"└ {format_price(ton_usd * r['USD_MASTER'])} ماستر\n\n"
     text += f"⏰ تحديث تلقائي كل دقيقة"
-    entities = [MessageEntityCustomEmoji(0, 1, EMOJI_TON)]
-    await event.reply(text, entities=entities, buttons=main_buttons())
+    await event.reply(text, buttons=main_buttons())
 
 @bot.on(events.NewMessage(pattern='(?i)^(دولار|usd)$'))
 async def usd_price(event):
@@ -344,8 +322,7 @@ async def all_prices(event):
     text += f"├ {format_price(r['USD_ASIA'])} اسياسيل\n"
     text += f"├ {format_price(r['USD_ZAIN'])} زين\n"
     text += f"└ {format_price(r['USD_MASTER'])} ماستر"
-    entities = [MessageEntityCustomEmoji(0, 1, EMOJI_FIRE)]
-    await event.reply(text, entities=entities, buttons=main_buttons())
+    await event.reply(text, buttons=main_buttons())
 
 @bot.on(events.NewMessage(pattern=r'(?i)^(\d+\.?\d*)\s*(تون|دولار|اسيا|زين|ماستر|جنيه|دينار|ton|usd|egp|iqd)$'))
 async def calculator(event):
@@ -389,8 +366,7 @@ async def set_alert(event):
     text += f"هنبهك لما TON يوصل **{format_price(price)}$**\n"
     text += f"السعر الحالي: {format_price(current)}$\n\n"
     text += f"{'🚀 تنبيه صعود' if alert_type == 'above' else '📉 تنبيه هبوط'}"
-    entities = [MessageEntityCustomEmoji(0, 1, EMOJI_BELL)]
-    await event.reply(text, entities=entities, buttons=main_buttons())
+    await event.reply(text, buttons=main_buttons())
 
 @bot.on(events.CallbackQuery(data=b"fragment"))
 async def fragment_btn(event):
